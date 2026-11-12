@@ -33,6 +33,44 @@ WHERE schemaname = 'pos_mgr'
                   'receipt','receipt_payment','agent_transaction_payment','shift','refund')
 ORDER BY seq_tup_read DESC;
 
+
+-- Step B2: partitioning of receipt / sale_transaction_report (no partition_date in the query -> no pruning)
+SELECT c.relname AS parent, pg_get_partkeydef(c.oid) AS partition_key,
+       count(i.inhrelid) AS n_partitions,
+       min(pg_get_expr(ch.relpartbound, ch.oid)) AS first_bound,
+       max(pg_get_expr(ch.relpartbound, ch.oid)) AS last_bound
+FROM pg_class c
+JOIN pg_namespace n ON n.oid = c.relnamespace AND n.nspname = 'pos_mgr'
+LEFT JOIN pg_inherits i ON i.inhparent = c.oid
+LEFT JOIN pg_class ch ON ch.oid = i.inhrelid
+WHERE c.relname IN ('receipt','sale_transaction_report','receipt_payment','refund',
+                    'agent_transaction_payment','shift')
+  AND c.relkind = 'p'
+GROUP BY c.relname, c.oid;
+
+-- Are the partitioned (ON ONLY) indexes valid on every partition?
+SELECT ic.relname AS index_name, x.indisvalid
+FROM pg_index x JOIN pg_class ic ON ic.oid = x.indexrelid
+JOIN pg_class t ON t.oid = x.indrelid
+WHERE t.relname IN ('receipt','sale_transaction_report') AND NOT x.indisvalid;
+
+-- Real size / scan stats of the partitions (parent shows 0)
+SELECT parent.relname AS parent, count(*) AS parts,
+       sum(s.n_live_tup) AS live_rows, sum(s.seq_scan) AS seq_scan,
+       sum(s.seq_tup_read) AS seq_tup_read, sum(s.idx_scan) AS idx_scan,
+       pg_size_pretty(sum(pg_total_relation_size(s.relid))) AS size
+FROM pg_inherits i
+JOIN pg_class parent ON parent.oid = i.inhparent
+JOIN pg_stat_user_tables s ON s.relid = i.inhrelid
+WHERE parent.relname IN ('receipt','sale_transaction_report','receipt_payment','refund')
+GROUP BY parent.relname;
+
+-- Who else seq-scans sale_schedule? (659k seq scans, 21 billion rows read)
+SELECT queryid, calls, round((total_exec_time/1000)::numeric) AS total_s, left(query, 200)
+FROM pg_stat_statements
+WHERE query ILIKE '%sale_schedule%'
+ORDER BY total_exec_time DESC LIMIT 15;
+
 -- Step C: EXPLAIN ANALYZE with literals.
 -- Find/Replace before running:
 --   __STORE__  -> store_code from step A          (e.g. 'S0001')
