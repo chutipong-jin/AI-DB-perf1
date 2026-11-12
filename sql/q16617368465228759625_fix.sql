@@ -34,13 +34,15 @@ payment_summary AS (
     FROM pos_mgr.sale_schedule ss
     INNER JOIN pos_mgr.receipt rc
             ON rc.sale_schedule_id = ss.id
-           AND rc.partition_date BETWEEN :saleScheduleDate - 1 AND :saleScheduleDate + 1  -- NEW
-           -- STEP 0 (2026-10-01..11-12): 1 of 3,452,492 receipts has partition_date <> sale_schedule_date,
-           -- so keep a +/-1 day window instead of '=' (still prunes to 1-2 partitions)
+           AND rc.partition_date BETWEEN :saleScheduleDate AND :saleScheduleDate + 1   -- NEW
+           -- receipts right after midnight (end of schedule) land in partition_date = date + 1,
+           -- e.g. RC26-CJX00112P04-030771 created 00:00:05 ICT for schedule 2026-11-11
     LEFT JOIN pos_mgr.receipt_payment rcpm
-           ON rcpm.partition_date = rc.partition_date             -- NEW
-          AND rcpm.store_no       = rc.store_no                   -- NEW
-          AND rcpm.receipt_no     = rc.receipt_no                 -- uses pk_receipt_payment
+           ON rcpm.partition_date = rc.partition_date                                 -- NEW
+          AND rcpm.store_no       = rc.store_no                                       -- NEW
+          AND rcpm.receipt_no     = rc.receipt_no                                     -- uses existing index
+          AND rcpm.partition_date BETWEEN :saleScheduleDate AND :saleScheduleDate + 1 -- NEW (optional: plan-time pruning)
+    -- note: if :saleScheduleDate is bound as varchar/timestamp, use CAST(:saleScheduleDate AS date) + 1
     WHERE ss.sale_schedule_date = :saleScheduleDate AND ss.store_code = :storeCode
     GROUP BY ss.store_code, ss.sale_schedule_date
 ),
