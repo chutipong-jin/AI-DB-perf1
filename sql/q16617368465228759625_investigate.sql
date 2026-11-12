@@ -3,8 +3,8 @@
 -- ~90 executions/night, ~60 s each, CPU-bound (io ~5%, lock ~5%)
 
 -- 1) Get the FULL query text (Query Insights truncates at 1024 chars)
-SELECT queryid, calls, round(total_exec_time/1000) AS total_s,
-       round(mean_exec_time/1000, 1) AS mean_s, round(max_exec_time/1000, 1) AS max_s,
+SELECT queryid, calls, round((total_exec_time/1000)::numeric) AS total_s,
+       round((mean_exec_time/1000)::numeric, 1) AS mean_s, round((max_exec_time/1000)::numeric, 1) AS max_s,
        rows, shared_blks_hit, shared_blks_read, temp_blks_written, query
 FROM pg_stat_statements
 WHERE query LIKE 'WITH store_terminate_date AS%'
