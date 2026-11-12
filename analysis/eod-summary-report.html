@@ -1,0 +1,376 @@
+<title>Store EOD Summary Query</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Thai:wght@400;500;600;700&display=swap">
+<style>
+/* Layout: single reading column, same visual system as the team's earlier perf reports (barcode IN-list) */
+:root{
+  --bg:#f6f7f9; --surface:#ffffff; --ink:#1b2230; --muted:#5a6475; --line:#dde1e8;
+  --bad:#c2410c; --bad-soft:#fbe0d3; --warn:#b7791f; --warn-soft:#f7e6cc;
+  --ok:#3f7d6a; --ok-soft:#d9ece5; --code-bg:#eef1f5; --accent:#2f5d8a; --accent-soft:#dce7f2;
+  --font-body:"IBM Plex Sans Thai",system-ui,sans-serif;
+  --font-mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    color-scheme:dark;
+    --bg:#12161d; --surface:#1a2029; --ink:#e6e9ef; --muted:#9aa4b4; --line:#2c3440;
+    --bad:#f07a4a; --bad-soft:#3d2319; --warn:#e9a441; --warn-soft:#3a2d17;
+    --ok:#6cc0a3; --ok-soft:#1c3129; --code-bg:#222a35; --accent:#7fb0e0; --accent-soft:#1f2d3d;
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --bg:#12161d; --surface:#1a2029; --ink:#e6e9ef; --muted:#9aa4b4; --line:#2c3440;
+  --bad:#f07a4a; --bad-soft:#3d2319; --warn:#e9a441; --warn-soft:#3a2d17;
+  --ok:#6cc0a3; --ok-soft:#1c3129; --code-bg:#222a35; --accent:#7fb0e0; --accent-soft:#1f2d3d;
+}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font:15px/1.7 var(--font-body);
+  padding-left:max(16px, env(safe-area-inset-left, 0px));padding-right:max(16px, env(safe-area-inset-right, 0px));padding-block:32px 56px}
+.wrap{max-width:880px;margin:0 auto;display:flex;flex-direction:column;gap:36px}
+.wrap > *{min-width:0}
+h1,h2,h3{text-wrap:balance;line-height:1.3;margin:0}
+h1{font-size:1.75rem;font-weight:700}
+h2{font-size:1.3rem;font-weight:600}
+h3{font-size:1.02rem;font-weight:600}
+p{margin:0;max-width:70ch}
+code{font-family:var(--font-mono);font-size:.86em;background:var(--code-bg);padding:1px 5px;border-radius:4px;overflow-wrap:anywhere}
+.eyebrow{font:500 .75rem/1.4 var(--font-mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+header{display:flex;flex-direction:column;gap:12px}
+.meta{display:flex;flex-wrap:wrap;gap:8px 18px;color:var(--muted);font-size:.9rem}
+.meta span{white-space:nowrap}
+section{display:flex;flex-direction:column;gap:16px;min-width:0}
+.lead{font-size:1.05rem}
+ul,ol{margin:0;padding-left:1.4em;display:flex;flex-direction:column;gap:6px}
+
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px}
+.kpi{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:14px 16px;display:flex;flex-direction:column;gap:4px}
+.kpi b{font-size:1.5rem;font-variant-numeric:tabular-nums;line-height:1.2}
+.kpi small{color:var(--muted);font-size:.85rem;line-height:1.5}
+.kpi.bad b{color:var(--bad)}
+.kpi.good b{color:var(--ok)}
+
+.qhead{display:flex;flex-wrap:wrap;align-items:baseline;gap:8px 14px;border-bottom:1px solid var(--line);padding-bottom:10px}
+.pill{font:500 .72rem/1 var(--font-mono);padding:5px 9px;border-radius:999px;white-space:nowrap}
+.pill.new{background:var(--bad-soft);color:var(--bad)}
+.pill.more{background:var(--warn-soft);color:var(--warn)}
+.pill.idx{background:var(--accent-soft);color:var(--accent)}
+.pill.okp{background:var(--ok-soft);color:var(--ok)}
+
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px}
+.grid2 > *{min-width:0}
+.box{background:var(--surface);border:1px solid var(--line);border-left:4px solid var(--c);border-radius:4px 10px 10px 4px;padding:18px 20px;display:flex;flex-direction:column;gap:10px}
+.box.p{--c:var(--bad)} .box.f{--c:var(--ok)} .box.i{--c:var(--accent)}
+.box ol,.box ul{font-size:.95rem}
+
+.tbl{overflow-x:auto;background:var(--surface);border:1px solid var(--line);border-radius:10px}
+table{border-collapse:collapse;width:100%;font-size:.9rem}
+th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+tr:last-child td{border-bottom:0}
+th{font-weight:600;color:var(--muted);font-size:.8rem;background:var(--code-bg)}
+td.num{font-variant-numeric:tabular-nums;white-space:nowrap}
+td.good{color:var(--ok);font-weight:600}
+td.badc{color:var(--bad);font-weight:600}
+
+.bars{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:18px 20px;display:flex;flex-direction:column;gap:14px}
+.brow{display:grid;grid-template-columns:minmax(150px,210px) 1fr;gap:6px 14px;align-items:center}
+.brow .lbl{font-size:.88rem;line-height:1.4}
+.brow .lbl small{display:block;color:var(--muted);font-size:.78rem}
+.track{display:flex;flex-direction:column;gap:4px;min-width:0}
+.b{height:14px;border-radius:3px;min-width:3px}
+.b.old{background:var(--bad-soft);border:1px solid var(--bad)}
+.b.new{background:var(--ok)}
+.bv{font:400 .75rem/1.3 var(--font-mono);color:var(--muted);font-variant-numeric:tabular-nums}
+.legend{display:flex;flex-wrap:wrap;gap:6px 18px;font-size:.82rem;color:var(--muted)}
+.legend i{display:inline-block;width:12px;height:12px;border-radius:3px;vertical-align:-2px;margin-right:6px}
+@media (max-width:520px){.brow{grid-template-columns:1fr}}
+
+.code{display:flex;flex-direction:column;gap:6px;min-width:0}
+.code .cap{font:500 .78rem/1.3 var(--font-mono);color:var(--muted)}
+.code .cap.bad{color:var(--bad)} .code .cap.ok{color:var(--ok)}
+pre{margin:0;background:var(--code-bg);border-radius:8px;padding:14px 16px;overflow-x:auto;font:400 .8rem/1.6 var(--font-mono)}
+pre .c{color:var(--muted)}
+pre .x{background:var(--bad-soft);border-radius:3px;padding:0 2px}
+pre .g{background:var(--ok-soft);border-radius:3px;padding:0 2px}
+details{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:12px 16px}
+details[open]{padding-bottom:16px}
+summary{cursor:pointer;font-weight:600;font-size:.95rem}
+summary:focus-visible{outline:2px solid var(--accent);outline-offset:3px;border-radius:4px}
+details > .code, details > p, details > .tbl{margin-top:12px}
+
+.note{background:var(--warn-soft);border-radius:8px;padding:12px 16px;font-size:.92rem}
+.steps td:first-child{font-variant-numeric:tabular-nums;color:var(--muted);width:2em}
+.foot{color:var(--muted);font-size:.85rem;border-top:1px solid var(--line);padding-top:16px;display:flex;flex-direction:column;gap:6px}
+</style>
+<div class="wrap">
+
+<header>
+  <span class="eyebrow">Performance · Cloud SQL · 13 พ.ย. 2026 · CPU spike ~22:15 ทุกคืน</span>
+  <h1>Query สรุปยอดปิดวันรายสาขาอ่าน <code>receipt_payment</code> ทั้งตารางทุกครั้ง ทำให้ CPU ช่วง 4 ทุ่มพุ่งเกิน 93% ทุกคืน</h1>
+  <div class="meta">
+    <span>Project: <code>cjx-app-pos</code></span>
+    <span>Instance: <code>sql-cjx-pos-prod-1</code></span>
+    <span>PostgreSQL 15</span>
+    <span>DB: <code>store_prod</code></span>
+    <span>Caller: <code>sa-pos-sale-stream-prd</code></span>
+  </div>
+  <p class="lead">Query สรุปยอดปิดวันของสาขา (CTE <code>store_terminate_date</code> … <code>payment_summary</code> … <code>refund</code>) ใช้เวลาเฉลี่ย <b>31.6 s ต่อครั้ง</b> ทั้งที่สรุปแค่ 1 สาขา 1 วัน และกิน <b>27.4%</b> ของ CPU ในช่วง 21:30–23:00 ต้นเหตุอยู่ที่ CTE <code>payment_summary</code> ซึ่ง join <code>receipt_payment</code> ด้วย <code>receipt_no</code> อย่างเดียว ไม่มี <code>partition_date</code> และไม่มี index ที่ขึ้นต้นด้วย <code>receipt_no</code> PostgreSQL จึงต้อง seq scan ทั้ง 36 partition (~19.5 ล้าน rows) แล้ว hash ทุกครั้ง แก้โดยเพิ่ม key ใน join 3 เงื่อนไข ทดสอบแล้วเหลือ <b>6.8 ms</b> และไม่ต้องสร้าง index ใหม่</p>
+</header>
+
+<div class="kpis">
+  <div class="kpi bad"><b>27.4%</b><small>ของ CPU ช่วง 21:30–23:00 (Query Insights 7 วัน, อันดับ 2 รองจาก query <code>sales_performance</code>)</small></div>
+  <div class="kpi bad"><b>31.6 s</b><small>mean ต่อครั้ง จาก 10,692 calls (pg_stat_statements สะสม)</small></div>
+  <div class="kpi bad"><b>~94 ชม.</b><small>DB time สะสม 337,359 s</small></div>
+  <div class="kpi good"><b>6.8 ms</b><small>ส่วน <code>payment_summary</code> หลังแก้ (EXPLAIN ANALYZE บน production)</small></div>
+</div>
+
+<section id="symptom">
+  <div class="qhead">
+    <h2>อาการ: CPU พุ่งทุกคืนช่วง 22:14–22:21</h2>
+    <span class="pill new">เกิดทุกวัน 7/7</span>
+  </div>
+  <div class="tbl">
+    <table>
+      <thead><tr><th>วัน</th><th>Peak CPU</th><th>เวลา peak</th><th>นาทีที่ CPU ≥ 80%</th><th>CPU ของ query นี้ (21:30–23:00)</th></tr></thead>
+      <tbody>
+        <tr><td class="num">5 พ.ย.</td><td class="num badc">94.8%</td><td class="num">22:16</td><td class="num">17</td><td class="num">4,251 s</td></tr>
+        <tr><td class="num">6 พ.ย.</td><td class="num badc">98.2%</td><td class="num">22:19</td><td class="num">31</td><td class="num">7,607 s</td></tr>
+        <tr><td class="num">7 พ.ย.</td><td class="num badc">95.5%</td><td class="num">22:14</td><td class="num">24</td><td class="num">5,200 s</td></tr>
+        <tr><td class="num">8 พ.ย.</td><td class="num badc">93.6%</td><td class="num">22:17</td><td class="num">20</td><td class="num">4,244 s</td></tr>
+        <tr><td class="num">9 พ.ย.</td><td class="num badc">95.7%</td><td class="num">22:20</td><td class="num">21</td><td class="num">4,727 s</td></tr>
+        <tr><td class="num">10 พ.ย.</td><td class="num badc">98.3%</td><td class="num">22:18</td><td class="num">20</td><td class="num">6,213 s</td></tr>
+        <tr><td class="num">11 พ.ย.</td><td class="num badc">98.1%</td><td class="num">22:21</td><td class="num">27</td><td class="num">5,373 s</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p>Query นี้รันตอนปิดรอบขายของแต่ละสาขา (~22:00) โดยเฉลี่ยใช้ CPU ราว 5,400 s ต่อคืน ถ้าหารด้วย 31.6 s จะได้ประมาณ 170–190 ครั้งต่อคืน ขณะที่ได้ผลลัพธ์แค่ ~90 rows ต่อคืน ซึ่งเท่ากับ 1 row ต่อสาขา จึงน่าจะมีการคำนวณสาขาเดิมซ้ำหลายรอบ (ดูข้อ 5 ใน action items)</p>
+</section>
+
+<section id="query">
+  <div class="qhead">
+    <h2>ส่วนของ query ที่มีปัญหา</h2>
+    <span class="pill more">CTE payment_summary</span>
+  </div>
+<pre>payment_summary AS (
+    SELECT ss.store_code, ss.sale_schedule_date,
+           SUM(CASE WHEN rcpm.payment_type = $20 THEN (rcpm.amount - rcpm.change) ELSE $21 END) AS cash_payment_amount,
+           …   <span class="c">-- อีก 6 ประเภทการชำระ</span>
+    FROM pos_mgr.sale_schedule ss
+    INNER JOIN pos_mgr.receipt rc <span class="x">ON rc.sale_schedule_id = ss.id</span>              <span class="c">-- ไม่มี partition_date</span>
+    LEFT JOIN pos_mgr.receipt_payment rcpm <span class="x">ON rcpm.receipt_no = rc.receipt_no</span>  <span class="c">-- join ด้วย receipt_no อย่างเดียว</span>
+    WHERE ss.sale_schedule_date = $6 AND ss.store_code = $7
+    GROUP BY ss.store_code, ss.sale_schedule_date
+)</pre>
+  <p>Query เต็มมี 7 CTE (<code>pg_stat_statements</code> queryid <code>-4225865709950654903</code>, Query Insights hash <code>16617368465228759625</code>) แต่ CTE อื่นมีต้นทุนรวมกันไม่ถึง 1% ของ plan</p>
+</section>
+
+<section id="cause">
+  <h2>สาเหตุ</h2>
+  <div class="grid2">
+    <div class="box p">
+      <h3>1. Join <code>receipt_payment</code> ด้วย key ไม่ครบ</h3>
+      <ul>
+        <li><code>receipt_payment</code> เป็น partitioned table แบ่งรายเดือนด้วย <code>partition_date</code> (36 partition, ~19.5M rows, 7.7 GB)</li>
+        <li>index ที่มีคือ PK <code>(partition_date, store_no, receipt_no, item_no)</code> และ <code>(partition_date, store_no, receipt_no)</code> ไม่มีตัวไหนขึ้นต้นด้วย <code>receipt_no</code></li>
+        <li>เมื่อ join ด้วย <code>receipt_no</code> อย่างเดียว planner จึงเลือก <b>Parallel Seq Scan ทุก partition</b> แล้วสร้าง hash table จาก ~19.5M rows เพื่อใช้แค่ ~200 rows</li>
+        <li><code>seq_tup_read</code> สะสมของ <code>receipt_payment</code> อยู่ที่ <b>1.24 ล้านล้าน rows</b></li>
+      </ul>
+    </div>
+    <div class="box p">
+      <h3>2. ไม่ตัด partition ของ <code>receipt</code></h3>
+      <ul>
+        <li><code>receipt</code> ก็เป็น partitioned table รายเดือน (36 partition, 41 GB)</li>
+        <li>join ด้วย <code>sale_schedule_id</code> อย่างเดียว จึงต้อง probe index ทั้ง 36 partition</li>
+        <li>ส่วนนี้ยังเร็ว เพราะมี index <code>sale_schedule_id</code> แต่ทำให้ส่ง <code>partition_date</code> ต่อไปยัง <code>receipt_payment</code> ไม่ได้</li>
+      </ul>
+    </div>
+  </div>
+  <details>
+    <summary>Plan เดิม (EXPLAIN บน production, ตัดเฉพาะส่วนที่หนัก)</summary>
+    <div class="code">
+<pre>Finalize GroupAggregate  (cost=795649.77..<span class="x">1323966.92</span> rows=1)        <span class="c">-- payment_summary: >99% ของ cost ทั้ง query</span>
+  ->  Gather  Workers Planned: 2
+        ->  Parallel Hash Left Join  Hash Cond: (rc.receipt_no = rcpm.receipt_no)
+              ->  Nested Loop  (rows=56)                                <span class="c">-- sale_schedule → receipt: เบา</span>
+              ->  Parallel Hash
+                    ->  Parallel Append  (rows=<span class="x">9,258,381</span> ต่อ worker)
+                          ->  <span class="x">Parallel Seq Scan on receipt_payment_26_10</span>  (rows=1,055,639)
+                          ->  <span class="x">Parallel Seq Scan on receipt_payment_26_09</span>  (rows=893,501)
+                          …   <span class="c">ทุก partition ตั้งแต่ 24_01 ถึง 26_12</span></pre>
+    </div>
+  </details>
+</section>
+
+<section id="test">
+  <h2>ผลทดสอบ</h2>
+  <p>ทดสอบเฉพาะ CTE <code>payment_summary</code> กับสาขาตัวอย่าง 1 สาขา วันที่ 12 พ.ย. (211 ใบเสร็จ) แบบเดิมไม่ได้รัน ANALYZE บน production เพราะใช้ CPU ราว 30 s จึงใช้ค่า mean จาก <code>pg_stat_statements</code> แทน</p>
+  <div class="tbl">
+    <table>
+      <thead><tr><th></th><th>แบบเดิม</th><th>แบบแก้</th></tr></thead>
+      <tbody>
+        <tr><td>การอ่าน <code>receipt_payment</code></td><td class="badc">Parallel Seq Scan ทั้ง 36 partition</td><td class="good">Index Scan เฉพาะ partition <code>26_11</code> (อีก 35 partition: never executed)</td></tr>
+        <tr><td>การอ่าน <code>receipt</code></td><td>Index Scan ทั้ง 36 partition</td><td class="good">Index Scan เฉพาะ partition <code>26_11</code></td></tr>
+        <tr><td>Planner cost ของ <code>payment_summary</code></td><td class="num badc">1,323,967</td><td class="num good">95</td></tr>
+        <tr><td>Buffers</td><td class="num">ไม่ได้วัด (seq scan 7.7 GB)</td><td class="num good">1,074</td></tr>
+        <tr><td>Execution time</td><td class="num badc">31.6 s (mean ทั้ง query)</td><td class="num good">6.8 ms (+ planning 19 ms)</td></tr>
+        <tr><td>Generic plan (JDBC หลัง 5 ครั้ง)</td><td>plan เหมือน custom plan จึงไม่ใช่ปัญหา plan cache</td><td>runtime pruning ทำงาน</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="bars" role="img" aria-label="กราฟเทียบ planner cost และเวลาระหว่างแบบเดิมกับแบบแก้">
+    <div class="legend"><span><i style="background:var(--bad-soft);border:1px solid var(--bad)"></i>แบบเดิม</span><span><i style="background:var(--ok)"></i>แบบแก้</span></div>
+    <div class="brow">
+      <div class="lbl">Planner cost<small>CTE payment_summary</small></div>
+      <div class="track"><div class="b old" style="width:100%"></div><div class="b new" style="width:0.01%"></div><span class="bv">1,323,967 → 95 (−99.99%)</span></div>
+    </div>
+    <div class="brow">
+      <div class="lbl">Execution time<small>ต่อครั้ง</small></div>
+      <div class="track"><div class="b old" style="width:100%"></div><div class="b new" style="width:0.02%"></div><span class="bv">31,600 → 6.8 ms (~4,600 เท่า)</span></div>
+    </div>
+  </div>
+  <p class="note">เวลาแบบเดิมเป็น mean ของทั้ง query ส่วนแบบแก้วัดเฉพาะ <code>payment_summary</code> แต่ CTE อื่นมี cost รวมกันไม่ถึง 1% ของ plan ทั้ง query จึงคาดว่าทั้ง query จะเหลือระดับ ms ต้องยืนยันด้วย <code>pg_stat_statements</code> หลัง deploy</p>
+</section>
+
+<section id="validate">
+  <h2>ตรวจข้อมูลก่อนเพิ่มเงื่อนไข partition</h2>
+  <div class="tbl">
+    <table>
+      <thead><tr><th>สิ่งที่ตรวจ</th><th>ช่วงข้อมูล</th><th>ผล</th></tr></thead>
+      <tbody>
+        <tr><td><code>receipt_payment.partition_date</code> และ <code>store_no</code> ตรงกับ <code>receipt</code></td><td>1–12 พ.ย.</td><td class="good">963,054 rows ไม่ตรง 0</td></tr>
+        <tr><td><code>receipt.partition_date</code> เท่ากับ <code>sale_schedule_date</code></td><td>1 ต.ค.–12 พ.ย.</td><td class="badc">3,452,492 ใบ ไม่ตรง 1 ใบ</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p>ใบที่ไม่ตรงออกเวลา <b>00:00:05 น.</b> หลังรอบขายปิด 5 วินาที จึงอยู่ใน partition ของวันถัดไป (<code>sale_schedule_date + 1</code>) ถ้าใช้ <code>rc.partition_date = :date</code> ใบแบบนี้จะหายไปจากยอดชำระ แต่ยังถูกนับใน <code>receipt_summary</code> ทำให้ตัวเลขสองส่วนไม่ตรงกัน จึงต้องใช้ช่วง <code>:date</code> ถึง <code>:date + 1</code></p>
+</section>
+
+<section id="fix">
+  <div class="qhead">
+    <h2>วิธีแก้ (ฝั่ง sale-stream service)</h2>
+    <span class="pill idx">ไม่ต้องสร้าง index ใหม่</span>
+  </div>
+  <div class="code">
+    <span class="cap ok">✅ แบบใหม่: เพิ่ม partition_date ใน join และ join receipt_payment ด้วย key ครบ</span>
+<pre>payment_summary AS (
+    SELECT ss.store_code, ss.sale_schedule_date,
+           …   <span class="c">-- SUM(CASE …) เหมือนเดิมทั้งหมด</span>
+    FROM pos_mgr.sale_schedule ss
+    INNER JOIN pos_mgr.receipt rc
+            ON rc.sale_schedule_id = ss.id
+           <span class="g">AND rc.partition_date BETWEEN :saleScheduleDate AND :saleScheduleDate + 1</span>
+    LEFT JOIN pos_mgr.receipt_payment rcpm
+           <span class="g">ON rcpm.partition_date = rc.partition_date</span>
+          <span class="g">AND rcpm.store_no       = rc.store_no</span>
+          AND rcpm.receipt_no     = rc.receipt_no
+          <span class="g">AND rcpm.partition_date BETWEEN :saleScheduleDate AND :saleScheduleDate + 1</span>  <span class="c">-- optional: ตัด partition ตั้งแต่ตอน plan</span>
+    WHERE ss.sale_schedule_date = :saleScheduleDate AND ss.store_code = :storeCode
+    GROUP BY ss.store_code, ss.sale_schedule_date
+)</pre>
+  </div>
+  <div class="box i">
+    <h3>ข้อควรระวังตอน implement</h3>
+    <ul>
+      <li>ใช้ช่วง <code>:date</code> ถึง <code>:date + 1</code> ห้ามใช้ <code>=</code> เพราะมีใบเสร็จหลังเที่ยงคืนที่อยู่ partition วันถัดไป</li>
+      <li>ถ้า parameter วันที่ถูก bind เป็น varchar หรือ timestamp ให้เขียน <code>CAST(:saleScheduleDate AS date) + 1</code></li>
+      <li>เงื่อนไขบรรทัดสุดท้ายของ <code>rcpm</code> ไม่บังคับ ช่วยลด planning time จาก ~19 ms ให้ planner ไม่ต้องพิจารณาทั้ง 36 partition</li>
+      <li>ก่อน deploy ให้เทียบ <code>count</code> และ <code>SUM</code> ระหว่างแบบเดิมกับแบบใหม่บน staging หรือ replica อย่างน้อย 2–3 สาขา รวมวันที่มีใบเสร็จหลังเที่ยงคืน</li>
+    </ul>
+  </div>
+</section>
+
+<section id="alternative">
+  <div class="qhead">
+    <h2>ทางเลือกสำรอง: สร้าง index ระหว่างรอ deploy</h2>
+    <span class="pill more">ทางเลือกสำรอง</span>
+  </div>
+  <p>ถ้ายังแก้ code ไม่ได้ในเร็ววัน DBA สร้าง index <code>receipt_payment (receipt_no)</code> แก้ขัดได้โดยไม่ต้อง deploy แต่ยังต้อง probe ทุก partition จึงช้ากว่าการแก้ query</p>
+  <div class="tbl">
+    <table>
+      <thead><tr><th></th><th>A: แก้ join (แนะนำ)</th><th>B: index <code>receipt_payment(receipt_no)</code></th></tr></thead>
+      <tbody>
+        <tr><td>แก้ code</td><td>ต้องแก้</td><td class="good">ไม่ต้อง</td></tr>
+        <tr><td>งานฝั่ง DB</td><td class="good">ไม่มี</td><td>สร้าง index ทีละ partition ด้วย <code>CONCURRENTLY</code> แล้ว attach (36 partition, 7.7 GB)</td></tr>
+        <tr><td>ผลที่คาด</td><td class="good">อ่าน 1 partition, ~7 ms</td><td>probe index 36 partition ต่อใบเสร็จ ยังเร็วกว่าเดิมมาก แต่ช้ากว่า A</td></tr>
+        <tr><td>ผลข้างเคียง</td><td>ไม่มี</td><td class="badc">insert ลง <code>receipt_payment</code> ช้าลงเล็กน้อย และใช้พื้นที่เพิ่ม</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <details>
+    <summary>คำสั่งสำหรับทางเลือก B</summary>
+    <div class="code">
+<pre><span class="c">-- 1) index บน parent (ยังไม่ valid)</span>
+CREATE INDEX IF NOT EXISTS idx_receipt_payment_receipt_no
+    ON ONLY pos_mgr.receipt_payment (receipt_no);
+
+<span class="c">-- 2) ทุก partition: สร้างแบบ CONCURRENTLY แล้ว attach (รันทีละคำสั่ง ห้ามอยู่ใน transaction)</span>
+CREATE INDEX CONCURRENTLY receipt_payment_26_11_receipt_no_idx
+    ON pos_mgr.receipt_payment_26_11 (receipt_no);
+ALTER INDEX pos_mgr.idx_receipt_payment_receipt_no
+    ATTACH PARTITION pos_mgr.receipt_payment_26_11_receipt_no_idx;
+<span class="c">-- … ทำซ้ำทุก partition (script สร้างคำสั่งอยู่ใน sql/q16617368465228759625_fix.sql)</span></pre>
+    </div>
+  </details>
+</section>
+
+<section id="secondary">
+  <h2>จุดอื่นใน query เดียวกันที่ควรแก้ไปพร้อมกัน</h2>
+  <div class="tbl">
+    <table>
+      <thead><tr><th>จุด</th><th>ปัญหา</th><th>แนวทางแก้</th></tr></thead>
+      <tbody>
+        <tr><td>CTE <code>refund</code></td><td>เงื่อนไข <code>CAST(DATE_TRUNC('day', rf.sale_schedule_date AT TIME ZONE …) AS DATE) = $12</code> ใช้ index ไม่ได้ และไม่มี index ที่ <code>store_code</code> จึง seq scan <code>refund</code> ทั้งตาราง (~70k rows) ทุกครั้ง</td><td>เปลี่ยนเป็นช่วงเวลา <code>rf.sale_schedule_date &gt;= (:date)::timestamp AT TIME ZONE 'Asia/Bangkok' AND rf.sale_schedule_date &lt; (:date + 1)::timestamp AT TIME ZONE 'Asia/Bangkok'</code> และเพิ่ม index <code>refund (store_code, sale_schedule_date)</code></td></tr>
+        <tr><td>CTE <code>receipt_summary</code></td><td>อ่าน <code>sale_transaction_report</code> ทุก partition (24) และไม่มี index <code>(store_code, sale_schedule_date)</code> ตอนนี้ยังเบา</td><td>ตรวจว่า <code>partition_date</code> ตรงกับ <code>sale_schedule_date</code> หรือไม่ ถ้าตรงให้เพิ่มเงื่อนไขแบบเดียวกับข้างบน</td></tr>
+        <tr><td>Final <code>LEFT JOIN refund</code></td><td class="badc">Bug เรื่องความถูกต้อง: join กับ <code>rcs</code> (receipt_summary) แทน <code>ssss</code> วันที่สาขาไม่มีใบเสร็จ ยอด refund จะหายไป</td><td>เปลี่ยนเป็น <code>rf.store_code = ssss.store_code AND rf.sale_schedule_date = ssss.sale_schedule_date</code></td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section id="ruled-out">
+  <h2>สิ่งที่ตรวจแล้วและตัดออก</h2>
+  <div class="tbl">
+    <table>
+      <thead><tr><th>สมมติฐาน</th><th>ผลตรวจ</th></tr></thead>
+      <tbody>
+        <tr><td>Generic plan flip (JDBC prepared statement)</td><td>custom plan และ generic plan เลือก seq scan <code>receipt_payment</code> เหมือนกัน</td></tr>
+        <tr><td>ขาด index ที่ <code>receipt.sale_schedule_id</code></td><td>มีแล้วทุก partition (<code>idx_sr_sale_schedule_id</code>)</td></tr>
+        <tr><td>Index บน partitioned table ไม่ valid</td><td>ทุก index valid</td></tr>
+        <tr><td>Lock contention</td><td>lock time ~5% ของ exec time</td></tr>
+        <tr><td>IO / disk</td><td>io time ~5% ของ exec time ข้อมูลอยู่ใน cache เกือบทั้งหมด ต้นทุนจึงเป็น CPU</td></tr>
+        <tr><td><code>sale_schedule</code> seq scan สูง (659k ครั้ง)</td><td>ไม่ได้มาจาก query นี้ เพราะ query นี้ใช้ index ของ <code>sale_schedule</code></td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section id="actions">
+  <div class="qhead">
+    <h2>ลำดับการแก้และ action items</h2>
+    <span class="pill new">Priority สูง</span>
+  </div>
+  <div class="tbl">
+    <table class="steps">
+      <thead><tr><th>#</th><th>งาน</th><th>ผู้รับผิดชอบ</th><th>หมายเหตุ</th></tr></thead>
+      <tbody>
+        <tr><td>1</td><td>แก้ join ใน CTE <code>payment_summary</code> ตามตัวอย่าง</td><td>Dev</td><td>แก้จุดเดียว ไม่เปลี่ยนผลลัพธ์</td></tr>
+        <tr><td>2</td><td>เทียบผลแบบเดิมกับแบบใหม่บน staging หรือ replica</td><td>Dev + DBA</td><td>รวมวันที่มีใบเสร็จหลังเที่ยงคืน</td></tr>
+        <tr><td>3</td><td>แก้ bug <code>LEFT JOIN refund</code> และเงื่อนไขวันที่ของ <code>refund</code></td><td>Dev</td><td>ทำใน release เดียวกันได้</td></tr>
+        <tr><td>4</td><td>Deploy แล้ว monitor queryid <code>-4225865709950654903</code> และ CPU ช่วง 22:00</td><td>DBA</td><td>เป้าหมาย: mean จาก 31.6 s เหลือระดับ ms และ <code>seq_tup_read</code> ของ <code>receipt_payment</code> โตช้าลงมาก</td></tr>
+        <tr><td>5</td><td>ตรวจว่าทำไม 1 สาขาถูกคำนวณหลายรอบต่อคืน (~180 ครั้ง สำหรับ ~90 สาขา)</td><td>Dev</td><td>อาจ trigger ทุกครั้งที่แต่ละเครื่อง POS ปิดรอบ ถ้ารวมหรือหน่วงการเรียกได้ จะลดภาระได้อีก</td></tr>
+        <tr><td>6</td><td>ถ้า deploy ไม่ทันภายในสัปดาห์นี้ ให้ทำทางเลือก B</td><td>DBA</td><td>ยกเลิกได้หลังแก้ข้อ 1</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="note">CPU ช่วง 22:00 มี query <code>sales_performance</code> อีกตัวที่ใช้ CPU 31% ซึ่งแยกติดตามอยู่ (รอขึ้น index) ถ้าแก้ทั้งสองตัวจะครอบคลุมประมาณ 58% ของ CPU ช่วงนั้น ตัวถัดไปที่น่าตรวจคือ query refund ที่ join <code>receipt</code> ด้วย <code>receipt_no</code> อย่างเดียว อาการน่าจะคล้ายกัน</p>
+</section>
+
+<footer class="foot">
+  <span>ที่มา: Cloud SQL Query Insights (21:30–23:00, 5–11 พ.ย. 2026), Cloud Monitoring CPU utilization, <code>pg_stat_statements</code> (สะสม), <code>pg_indexes</code>, <code>pg_stat_user_tables</code>, <code>pg_inherits</code>, EXPLAIN (custom และ generic plan) และ EXPLAIN (ANALYZE, BUFFERS) ของส่วนที่แก้บน production</span>
+  <span>Data classification 🟡 ข้อมูลภายใน: ไม่มีเลขใบเสร็จหรือยอดเงินจริง query แสดงแบบ normalized</span>
+  <span>ควรให้ dev เจ้าของ sale-stream service และ DBA ตรวจทานก่อนนำไปใช้</span>
+</footer>
+
+</div>
