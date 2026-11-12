@@ -41,6 +41,7 @@ code{font-family:var(--font-mono);font-size:.86em;background:var(--code-bg);padd
 header{display:flex;flex-direction:column;gap:12px}
 .meta{display:flex;flex-wrap:wrap;gap:8px 18px;color:var(--muted);font-size:.9rem}
 .meta span{white-space:nowrap}
+.caller{font-size:.92rem;background:var(--accent-soft);border-radius:8px;padding:8px 14px;max-width:none}
 section{display:flex;flex-direction:column;gap:16px;min-width:0}
 .lead{font-size:1.05rem}
 ul,ol{margin:0;padding-left:1.4em;display:flex;flex-direction:column;gap:6px}
@@ -108,7 +109,7 @@ details > .code, details > p, details > .tbl{margin-top:12px}
 
 <header>
   <span class="eyebrow">Performance · Cloud SQL · 13 พ.ย. 2026 · CPU spike ~22:15 ทุกคืน</span>
-  <h1>Query สรุปยอดปิดวันรายสาขาอ่าน <code>receipt_payment</code> ทั้งตารางทุกครั้ง ทำให้ CPU ช่วง 4 ทุ่มพุ่งเกิน 93% ทุกคืน</h1>
+  <h1>Query สรุปยอดปิดวันรายสาขาอ่าน <code>receipt_payment</code> ทั้ง Table ทุกครั้ง ทำให้ CPU ช่วง 4 ทุ่มพุ่งเกิน 93% ทุกคืน</h1>
   <div class="meta">
     <span>Project: <code>cjx-app-pos</code></span>
     <span>Instance: <code>sql-cjx-pos-prod-1</code></span>
@@ -116,6 +117,7 @@ details > .code, details > p, details > .tbl{margin-top:12px}
     <span>DB: <code>store_prod</code></span>
     <span>Caller: <code>sa-pos-sale-stream-prd</code></span>
   </div>
+  <p class="caller">Query นี้ถูกเรียกโดย DB user <code>sa-pos-sale-stream-prd@cjx-app-pos.iam</code> (IAM service account ของ sale-stream service)</p>
   <p class="lead">Query สรุปยอดปิดวันของสาขา (CTE <code>store_terminate_date</code> … <code>payment_summary</code> … <code>refund</code>) ใช้เวลาเฉลี่ย <b>31.6 s ต่อครั้ง</b> ทั้งที่สรุปแค่ 1 สาขา 1 วัน และกิน <b>27.4%</b> ของ CPU ในช่วง 21:30–23:00 ต้นเหตุอยู่ที่ CTE <code>payment_summary</code> ซึ่ง join <code>receipt_payment</code> ด้วย <code>receipt_no</code> อย่างเดียว ไม่มี <code>partition_date</code> และไม่มี index ที่ขึ้นต้นด้วย <code>receipt_no</code> PostgreSQL จึงต้อง seq scan ทั้ง 36 partition (~19.5 ล้าน rows) แล้ว hash ทุกครั้ง แก้โดยเพิ่ม key ใน join 3 เงื่อนไข ทดสอบแล้วเหลือ <b>6.8 ms</b> และไม่ต้องสร้าง index ใหม่</p>
 </header>
 
@@ -321,7 +323,7 @@ ALTER INDEX pos_mgr.idx_receipt_payment_receipt_no
     <table>
       <thead><tr><th>จุด</th><th>ปัญหา</th><th>แนวทางแก้</th></tr></thead>
       <tbody>
-        <tr><td>CTE <code>refund</code></td><td>เงื่อนไข <code>CAST(DATE_TRUNC('day', rf.sale_schedule_date AT TIME ZONE …) AS DATE) = $12</code> ใช้ index ไม่ได้ และไม่มี index ที่ <code>store_code</code> จึง seq scan <code>refund</code> ทั้งตาราง (~70k rows) ทุกครั้ง</td><td>เปลี่ยนเป็นช่วงเวลา <code>rf.sale_schedule_date &gt;= (:date)::timestamp AT TIME ZONE 'Asia/Bangkok' AND rf.sale_schedule_date &lt; (:date + 1)::timestamp AT TIME ZONE 'Asia/Bangkok'</code> และเพิ่ม index <code>refund (store_code, sale_schedule_date)</code></td></tr>
+        <tr><td>CTE <code>refund</code></td><td>เงื่อนไข <code>CAST(DATE_TRUNC('day', rf.sale_schedule_date AT TIME ZONE …) AS DATE) = $12</code> ใช้ index ไม่ได้ และไม่มี index ที่ <code>store_code</code> จึง seq scan <code>refund</code> ทั้ง Table (~70k rows) ทุกครั้ง</td><td>เปลี่ยนเป็นช่วงเวลา <code>rf.sale_schedule_date &gt;= (:date)::timestamp AT TIME ZONE 'Asia/Bangkok' AND rf.sale_schedule_date &lt; (:date + 1)::timestamp AT TIME ZONE 'Asia/Bangkok'</code> และเพิ่ม index <code>refund (store_code, sale_schedule_date)</code></td></tr>
         <tr><td>CTE <code>receipt_summary</code></td><td>อ่าน <code>sale_transaction_report</code> ทุก partition (24) และไม่มี index <code>(store_code, sale_schedule_date)</code> ตอนนี้ยังเบา</td><td>ตรวจว่า <code>partition_date</code> ตรงกับ <code>sale_schedule_date</code> หรือไม่ ถ้าตรงให้เพิ่มเงื่อนไขแบบเดียวกับข้างบน</td></tr>
         <tr><td>Final <code>LEFT JOIN refund</code></td><td class="badc">Bug เรื่องความถูกต้อง: join กับ <code>rcs</code> (receipt_summary) แทน <code>ssss</code> วันที่สาขาไม่มีใบเสร็จ ยอด refund จะหายไป</td><td>เปลี่ยนเป็น <code>rf.store_code = ssss.store_code AND rf.sale_schedule_date = ssss.sale_schedule_date</code></td></tr>
       </tbody>
