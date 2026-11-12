@@ -34,9 +34,9 @@ payment_summary AS (
     FROM pos_mgr.sale_schedule ss
     INNER JOIN pos_mgr.receipt rc
             ON rc.sale_schedule_id = ss.id
-           AND rc.partition_date = :saleScheduleDate              -- NEW (prunes to 1 partition)
-           -- if STEP 0 shows receipts after midnight use:
-           -- AND rc.partition_date BETWEEN :saleScheduleDate AND :saleScheduleDate + 1
+           AND rc.partition_date BETWEEN :saleScheduleDate - 1 AND :saleScheduleDate + 1  -- NEW
+           -- STEP 0 (2026-10-01..11-12): 1 of 3,452,492 receipts has partition_date <> sale_schedule_date,
+           -- so keep a +/-1 day window instead of '=' (still prunes to 1-2 partitions)
     LEFT JOIN pos_mgr.receipt_payment rcpm
            ON rcpm.partition_date = rc.partition_date             -- NEW
           AND rcpm.store_no       = rc.store_no                   -- NEW
@@ -46,13 +46,22 @@ payment_summary AS (
 ),
 */
 
+-- Which receipt(s) have partition_date <> sale_schedule_date?
+SELECT ss.store_code, ss.sale_schedule_date, ss.start_date, ss.end_date,
+       rc.partition_date, rc.receipt_no, rc.receipt_date, rc.created_date
+FROM pos_mgr.sale_schedule ss
+JOIN pos_mgr.receipt rc ON rc.sale_schedule_id = ss.id
+     AND rc.partition_date BETWEEN DATE '2026-09-29' AND DATE '2026-11-13'
+WHERE ss.sale_schedule_date BETWEEN DATE '2026-10-01' AND DATE '2026-11-12'
+  AND rc.partition_date <> ss.sale_schedule_date;
+
 -- Test of option A (plain EXPLAIN = safe; EXPLAIN ANALYZE should now take milliseconds)
 EXPLAIN (ANALYZE, BUFFERS)
 SELECT ss.store_code, ss.sale_schedule_date, count(*), SUM(rcpm.amount - rcpm.change)
 FROM pos_mgr.sale_schedule ss
 INNER JOIN pos_mgr.receipt rc
         ON rc.sale_schedule_id = ss.id
-       AND rc.partition_date = DATE '2026-11-12'
+       AND rc.partition_date BETWEEN DATE '2026-11-12' - 1 AND DATE '2026-11-12' + 1
 LEFT JOIN pos_mgr.receipt_payment rcpm
        ON rcpm.partition_date = rc.partition_date
       AND rcpm.store_no = rc.store_no
